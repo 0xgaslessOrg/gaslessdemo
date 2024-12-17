@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0xGasless Token Transfer Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        input {
+            padding: 8px;
+            margin: 5px 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        #chainSelect {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        #networkDisplay {
+            color: #6366f1;
+            font-weight: 600;
+        }
+        
+        .chain-selector {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>0xGasless Token Transfer Demo</h1>
+        
+        <div class="section" id="chainSelect">
+            <h2>Network Selection</h2>
+            <select id="chainSelector" class="chain-selector">
+                <option value="">Select Network</option>
+                <option value="AVALANCHE">Avalanche</option>
+                <option value="MOONBEAM">Moonbeam</option>
+                <option value="BASE">Base</option>
+                <option value="ETHEREUM">Ethereum</option>
+                <option value="POLYGON">Polygon</option>
+                <option value="METIS">Metis</option>
+                <option value="FANTOM">Fantom</option>
+            </select>
+            <div>
+                Current Network: <span id="networkDisplay">Not Selected</span>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Wallet Setup</h2>
+            <div class="button-group">
+                <button onclick="createNewWallet()" id="createWalletBtn">Create New Wallet</button>
+                <button onclick="importWallet()" id="importWalletBtn">Import Wallet</button>
+                <button onclick="connectMetamask()" id="connectMetamaskBtn" class="btn-primary" disabled>
+                    Connect MetaMask
+                </button>
+            </div>
+            <input type="text" id="privateKey" placeholder="Private Key (for import)" style="display: none;">
+            <div id="walletInfo" class="result"></div>
+        </div>
+
+        <div class="section">
+            <h2>Smart Account Setup</h2>
+            <button onclick="setupSmartAccount()" id="setupBtn" disabled>Setup Smart Account</button>
+            <div id="smartAccountInfo" class="result"></div>
+        </div>
+
+        <div class="section">
+            <h2>Token Transfer</h2>
+            <input type="text" id="tokenAddress" placeholder="Token Address">
+            <input type="text" id="recipientAddress" placeholder="Recipient Address">
+            <input type="text" id="amount" placeholder="Amount">
+            <button onclick="executeTransfer()" id="transferBtn" disabled>Send Token</button>
+            <div id="transferResult" class="result"></div>
+        </div>
+    </div>
+
+    <!-- Load required libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    
+    <!-- ERC20 ABI -->
+    <script>
+        const tokenABI = [
+            "function transfer(address to, uint256 amount) returns (bool)",
+            "function decimals() view returns (uint8)",
+            "function symbol() view returns (string)"
+        ];
+    </script>
+
+    <!-- Main Script -->
+    <script type="module">
+        import { createSmartAccountClient, PaymasterMode } from 'https://cdn.jsdelivr.net/npm/@0xgasless/smart-account@0.0.11/+esm';
+
+        // Configuration
+        const CONFIG = {
+            rpcUrl: "https://avax-mainnet.g.alchemy.com/v2/VcifYAbO7TUL14eUvHmbjSklgVzWEMXk",
+            bundlerUrl: "https://bundler.0xgasless.com/43114",
+            paymasterUrl: "https://paymaster.0xgasless.com/v1/43114/rpc/35b99953-edde-4f28-9661-c41898916471",
+            chainId: 43114 
+        };
+
+        const CHAIN_CONFIG = {
+            MOONBEAM: {
+                chainId: 1284,
+                rpcUrl: "https://moonbeam-rpc.publicnode.com",
+                bundlerUrl: "https://bundler.0xgasless.com/8780429",
+                paymasterUrl: "YOUR_PAYMASTER_URL",
+                name: "Moonbeam",
+                nftContractAddress: "YOUR_MOONBEAM_CONTRACT",
+                explorerUrl: "https://moonbeam.moonscan.io/tx/",
+                nativeCurrency: {
+                    name: "GLMR",
+                    symbol: "GLMR",
+                    decimals: 18
+                }
+            },
+            BASE: {
+                chainId: 8453,
+                rpcUrl: "https://base-rpc.publicnode.com",
+                bundlerUrl: "https://bundler.0xgasless.com/23821278",
+                paymasterUrl: "YOUR_PAYMASTER_URL",
+                name: "Base",
+                nftContractAddress: "YOUR_BASE_CONTRACT",
+                explorerUrl: "https://basescan.org/tx/",
+                nativeCurrency: {
+                    name: "ETH",
+                    symbol: "ETH",
+                    decimals: 18
+                }
+            },
+            AVALANCHE: {
+                chainId: 43114,
+                rpcUrl: "https://avalanche-c-chain-rpc.publicnode.com",
+                bundlerUrl: "https://bundler.0xgasless.com/43114",
+                paymasterUrl: CONFIG.paymasterUrl,
+                name: "Avalanche",
+                nftContractAddress: CONFIG.nftContractAddress,
+                explorerUrl: "https://subnets.avax.network/c-chain/tx/",
+                nativeCurrency: {
+                    name: "AVAX",
+                    symbol: "AVAX",
+                    decimals: 18
+                }
+            },
+            // ... Add other chains as needed
+        };
+
+        let smartWallet;
+        let provider;
+        let wallet;
+
+        window.createNewWallet = async function() {
+            try {
+                const createWalletBtn = document.getElementById('createWalletBtn');
+                const importWalletBtn = document.getElementById('importWalletBtn');
+                const setupBtn = document.getElementById('setupBtn');
+                const privateKeyInput = document.getElementById('privateKey');
+                
+                createWalletBtn.disabled = true;
+                importWalletBtn.disabled = true;
+
+                provider = new ethers.providers.JsonRpcProvider(CONFIG.rpcUrl);
+                wallet = ethers.Wallet.createRandom().connect(provider);
+                
+                document.getElementById('walletInfo').innerHTML = `
+                    <p><strong>EOA Address:</strong> ${wallet.address}</p>
+                    <p><strong>Private Key:</strong> ${wallet.privateKey}</p>
+                    <p style="color: red;"><strong>⚠️ IMPORTANT:</strong> Save this private key securely!</p>
+                `;
+
+                setupBtn.disabled = false;
+                createWalletBtn.disabled = false;
+                importWalletBtn.disabled = false;
+                privateKeyInput.style.display = 'none';
+            } catch (error) {
+                document.getElementById('walletInfo').innerHTML = `Error: ${error.message}`;
+                createWalletBtn.disabled = false;
+                importWalletBtn.disabled = false;
+            }
+        }
+
+        window.importWallet = function() {
+            const privateKeyInput = document.getElementById('privateKey');
+            privateKeyInput.style.display = 'block';
+            privateKeyInput.value = '';
+            privateKeyInput.focus();
+            
+            privateKeyInput.onkeyup = async function(e) {
+                if (e.key === 'Enter') {
+                    try {
+                        const privateKey = privateKeyInput.value.trim();
+                        if (!privateKey.startsWith('0x')) {
+                            throw new Error('Private key must start with 0x');
+                        }
+
+                        provider = new ethers.providers.JsonRpcProvider(CONFIG.rpcUrl);
+                        wallet = new ethers.Wallet(privateKey, provider);
+                        
+                        document.getElementById('walletInfo').innerHTML = `
+                            <p><strong>EOA Address:</strong> ${wallet.address}</p>
+                            <p><strong>Status:</strong> Wallet imported successfully!</p>
+                        `;
+
+                        document.getElementById('setupBtn').disabled = false;
+                        privateKeyInput.style.display = 'none';
+                    } catch (error) {
+                        document.getElementById('walletInfo').innerHTML = `Error: ${error.message}`;
+                    }
+                }
+            }
+        }
+
+        window.setupSmartAccount = async function() {
+            try {
+                const setupBtn = document.getElementById('setupBtn');
+                const transferBtn = document.getElementById('transferBtn');
+                setupBtn.disabled = true;
+
+                smartWallet = await createSmartAccountClient({
+                    signer: wallet,
+                    paymasterUrl: CONFIG.paymasterUrl,
+                    bundlerUrl: CONFIG.bundlerUrl,
+                    chainId: CONFIG.chainId
+                });
+
+                const address = await smartWallet.getAddress();
+                document.getElementById('smartAccountInfo').innerHTML = `
+                    <p><strong>Smart Account Address:</strong> ${address}</p>
+                    <p><strong>Status:</strong> Ready for transactions</p>
+                `;
+
+                transferBtn.disabled = false;
+                setupBtn.disabled = false;
+            } catch (error) {
+                document.getElementById('smartAccountInfo').innerHTML = `Error: ${error.message}`;
+                document.getElementById('setupBtn').disabled = false;
+            }
+        }
+
+        window.executeTransfer = async function() {
+            try {
+                if (!smartWallet) {
+                    throw new Error("Please setup smart account first");
+                }
+
+                const transferBtn = document.getElementById('transferBtn');
+                transferBtn.disabled = true;
+                const resultDiv = document.getElementById('transferResult');
+                resultDiv.innerHTML = "Initiating transfer...";
+
+                const tokenAddress = document.getElementById('tokenAddress').value;
+                const recipient = document.getElementById('recipientAddress').value;
+                const amount = document.getElementById('amount').value;
+
+                if (!tokenAddress || !recipient || !amount) {
+                    throw new Error("Please fill in all fields: token address, recipient address, and amount");
+                }
+
+                // Get token information
+                const tokenContract = new ethers.Contract(tokenAddress, tokenABI, provider);
+                const decimals = await tokenContract.decimals();
+                const symbol = await tokenContract.symbol();
+
+                const functionInterface = new ethers.utils.Interface(tokenABI);
+                const data = functionInterface.encodeFunctionData("transfer", [
+                    recipient,
+                    ethers.utils.parseUnits(amount, decimals)
+                ]);
+
+                const tx = {
+                    to: tokenAddress,
+                    value: 0,
+                    data: data
+                };
+
+                resultDiv.innerHTML = `Sending ${amount} ${symbol} to ${recipient}...`;
+                const userOpResponse = await smartWallet.sendTransaction(tx, {
+                    paymasterServiceData: {
+                        mode: PaymasterMode.SPONSORED
+                    }
+                });
+
+                resultDiv.innerHTML = `Transaction sent! Waiting for confirmation...<br>Hash: ${userOpResponse.hash}`;
+
+                const receipt = await userOpResponse.wait();
+                if (receipt.success) {
+                    resultDiv.innerHTML += `
+                        <br>Transaction confirmed!
+                        <br>Block Number: ${receipt.receipt.blockNumber}
+                        <br>Transferred: ${amount} ${symbol}
+                        <br>To: ${recipient}
+                    `;
+                } else {
+                    throw new Error("Transaction failed");
+                }
+
+                transferBtn.disabled = false;
+            } catch (error) {
+                document.getElementById('transferResult').innerHTML = `Error: ${error.message}`;
+                document.getElementById('transferBtn').disabled = false;
+            }
+        }
+
+        window.connectMetamask = async function() {
+            try {
+                const selectedChain = document.getElementById('chainSelector').value;
+                if (!selectedChain) {
+                    throw new Error('Please select a network first');
+                }
+
+                if (typeof window.ethereum === 'undefined') {
+                    throw new Error('Please install MetaMask to use this feature');
+                }
+
+                const chainConfig = CHAIN_CONFIG[selectedChain];
+                if (!chainConfig) {
+                    throw new Error('Invalid network configuration');
+                }
+
+                // Switch network first
+                await switchNetwork(chainConfig);
+
+                // Request account access
+                const accounts = await window.ethereum.request({
+                    method: 'eth_requestAccounts'
+                });
+                const account = accounts[0];
+
+                // Update provider and wallet
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                wallet = provider.getSigner();
+
+                // Update UI
+                document.getElementById('walletInfo').innerHTML = `
+                    <p><strong>Connected Address:</strong> ${account}</p>
+                    <p><strong>Network:</strong> ${selectedChain}</p>
+                    <p><strong>Status:</strong> Connected via MetaMask</p>
+                `;
+
+                // Enable setup button
+                document.getElementById('setupBtn').disabled = false;
+
+                return account;
+            } catch (error) {
+                console.error('Connection error:', error);
+                document.getElementById('walletInfo').innerHTML = `Error: ${error.message}`;
+                throw error;
+            }
+        };
+
+        async function switchNetwork(chainConfig) {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: ethers.utils.hexValue(chainConfig.chainId) }],
+                });
+            } catch (switchError) {
+                // This error code indicates that the chain has not been added to MetaMask
+                if (switchError.code === 4902) {
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: ethers.utils.hexValue(chainConfig.chainId),
+                                chainName: chainConfig.name,
+                                rpcUrls: [chainConfig.rpcUrl],
+                                nativeCurrency: chainConfig.nativeCurrency,
+                                blockExplorerUrls: [chainConfig.explorerUrl.split('/tx/')[0]]
+                            }],
+                        });
+                    } catch (addError) {
+                        console.error('Failed to add network:', addError);
+                        throw addError;
+                    }
+                } else {
+                    throw switchError;
+                }
+            }
+        }
+
+        document.getElementById('chainSelector').addEventListener('change', function(e) {
+            const connectMetamaskBtn = document.getElementById('connectMetamaskBtn');
+            connectMetamaskBtn.disabled = !e.target.value;
+            document.getElementById('networkDisplay').textContent = e.target.value || 'Not Selected';
+        });
+
+        if (window.ethereum) {
+            window.ethereum.on('chainChanged', () => {
+                window.location.reload();
+            });
+
+            window.ethereum.on('accountsChanged', (accounts) => {
+                if (accounts.length === 0) {
+                    provider = null;
+                    wallet = null;
+                    document.getElementById('walletInfo').innerHTML = '';
+                    document.getElementById('setupBtn').disabled = true;
+                }
+            });
+        }
+    </script>
+</body>
+</html>
